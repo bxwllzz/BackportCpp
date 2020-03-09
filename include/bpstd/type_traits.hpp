@@ -1190,7 +1190,126 @@ namespace bpstd {
 
   //----------------------------------------------------------------------------
 
-  // TODO(bitwizeshift): is_nothrow_convertible
+  namespace detail {
+
+    template <bool IsConvertible, typename From, typename To>
+    struct is_nothrow_convertible_impl : false_type{};
+
+    template <typename From, typename To>
+    struct is_nothrow_convertible_impl<true, From, To>
+    {
+      static void test(To) noexcept;
+
+      BPSTD_CPP17_INLINE static constexpr auto value =
+        noexcept(test(std::declval<From>()));
+    };
+
+  } // namespace detail
+
+  template <typename From, typename To>
+  using is_nothrow_convertible = bool_constant<
+    detail::is_nothrow_convertible_impl<is_convertible<From,To>::value,From,To>::value
+  >;
+
+#if BPSTD_HAS_TEMPLATE_VARIABLES
+  template <typename From, typename To>
+  BPSTD_CPP17_INLINE constexpr auto is_nothrow_convertible_v = is_nothrow_convertible<From, To>::value;
+#endif
+
+  namespace detail {
+    namespace adl_swap {
+
+      void swap();
+
+      //------------------------------------------------------------------------
+
+      template <typename T, typename U>
+      struct is_std_swappable_with : false_type{};
+
+      template <typename T>
+      struct is_std_swappable_with<T,T>
+        : conjunction<
+            is_move_constructible<remove_cvref_t<remove_extent_t<T>>>,
+            is_move_assignable<remove_cvref_t<remove_extent_t<T>>>,
+            is_lvalue_reference<T>
+          >{};
+
+      template <typename T, typename U>
+      struct is_nothrow_std_swappable_with : false_type{};
+
+      template <typename T>
+      struct is_nothrow_std_swappable_with<T,T>
+        : conjunction<
+            is_nothrow_move_constructible<remove_cvref_t<remove_extent_t<T>>>,
+            is_nothrow_move_assignable<remove_cvref_t<remove_extent_t<T>>>,
+            is_lvalue_reference<T>
+          >{};
+
+      //------------------------------------------------------------------------
+
+      template <typename T, typename U>
+      using detect_adl_swap = decltype(swap(std::declval<T>(), std::declval<U>()));
+
+      template <typename T, typename U, template <typename, typename> class Op, typename = void>
+      struct is_adl_swappable_with : false_type{};
+
+      template <typename T, typename U, template <typename, typename> class Op>
+      struct is_adl_swappable_with<T,U,Op, void_t<Op<T,U>>>
+        : true_type{};
+
+      template <typename T, typename U, bool IsSwappable = is_adl_swappable_with<T,U,detect_adl_swap>::value>
+      struct is_nothrow_adl_swappable_with : false_type{};
+
+      template <typename T, typename U>
+      struct is_nothrow_adl_swappable_with<T,U, true>
+        : bool_constant<noexcept(swap(std::declval<T>(), std::declval<U>()))>{};
+
+    } // namespace adl_swap
+
+    template <typename T, typename U>
+    struct is_swappable_with
+      : conditional_t<adl_swap::is_adl_swappable_with<T,U, adl_swap::detect_adl_swap>::value,
+          adl_swap::is_adl_swappable_with<T,U, adl_swap::detect_adl_swap>,
+          adl_swap::is_std_swappable_with<T,U>
+        >{};
+
+    template <typename T, typename U>
+    struct is_nothrow_swappable_with
+      : conditional_t<adl_swap::is_adl_swappable_with<T,U, adl_swap::detect_adl_swap>::value,
+          adl_swap::is_nothrow_adl_swappable_with<T,U>,
+          adl_swap::is_nothrow_std_swappable_with<T,U>
+        >{};
+
+  } // namespace detail
+
+  template <typename T, typename U>
+  using is_swappable_with = detail::is_swappable_with<remove_cvref_t<T>&,remove_cvref_t<U>&>;
+
+  template <typename T>
+  using is_swappable = is_swappable_with<T,T>;
+
+#if BPSTD_HAS_TEMPLATE_VARIABLES
+  template <typename T, typename U>
+  BPSTD_CPP17_INLINE constexpr auto is_swappable_with_v = is_swappable_with<T, U>::value;
+
+  template <typename T, typename U>
+  BPSTD_CPP17_INLINE constexpr auto is_swappable_v = is_swappable<T>::value;
+#endif
+
+  template <typename T, typename U>
+  using is_nothrow_swappable_with = detail::is_nothrow_swappable_with<remove_cvref_t<T>&,remove_cvref_t<U>&>;
+
+  template <typename T>
+  using is_nothrow_swappable = is_nothrow_swappable_with<T,T>;
+
+#if BPSTD_HAS_TEMPLATE_VARIABLES
+  template <typename T, typename U>
+  BPSTD_CPP17_INLINE constexpr auto is_nothrow_swappable_with_v = is_nothrow_swappable_with<T, U>::value;
+
+  template <typename T>
+  BPSTD_CPP17_INLINE constexpr auto is_nothrow_swappable_v = is_nothrow_swappable_with<T, T>::value;
+#endif
+
 } // namespace bpstd
 
 #endif /* BPSTD_TYPE_TRAITS_HPP */
